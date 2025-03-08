@@ -1,4 +1,4 @@
-# JPA Filter and Specification
+# JPA Filter and Specification: JUnit test
 
 ## Links
 

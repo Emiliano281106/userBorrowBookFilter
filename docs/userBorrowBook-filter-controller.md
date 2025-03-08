@@ -1,4 +1,4 @@
-# JPA Filter and Specification
+# JPA Filter and Specification: Rest Controller
 
 ## Links
 
@@ -130,7 +130,7 @@ public class BorrowController {
     private BorrowRepository borrowRepository;
 
     @GetMapping
-    @Transactional // Add transaction to ensure lazy-loaded entities are initialized
+    //@Transactional // Add transaction to ensure lazy-loaded entities are initialized
     public ResponseEntity<List<Borrow>> filterBorrows(
             @RequestParam(required = false) String bookTitle,
             @RequestParam(required = false) String isbn,
@@ -140,39 +140,21 @@ public class BorrowController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dob,
             @RequestParam(required = false) Boolean returned
     ) {
+        // Remember to set fetch to EAGER
         List<Borrow> borrows = borrowRepository.findAll(BorrowSpecification.filterByParameters(
                 bookTitle, isbn, available, userAge, archived, dob, returned
         ));
 
         // Initialize lazy-loaded relationships to avoid serialization issues
-        borrows.forEach(borrow -> {
+        /* borrows.forEach(borrow -> {
             borrow.getBook().getTitle(); // Force initialization of book
             borrow.getUser().getUserAppName(); // Force initialization of user
-        });
+        });*/
 
         return ResponseEntity.ok(borrows);
     }
 }
 ```
-
-#### JSON serialization
-
-We must face a common JSON serialization problem in Spring Boot when working with Hibernate's lazy loading are caused by:
-
-1. **Lazy Loading with Jackson Serialization**: When we try to serialize lazy-loaded entities (Book and UserApp) to JSON, Jackson tries to access proxy objects that haven't been initialized.
-   
-   1. **@Transactional**: we need to add `@Transactional` to ensure the transaction is still active when accessing lazy-loaded entities, and manually initialized them by accessing a property.
-   
-   2. **Prevent infinite recursion**: we need to add `@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})` to tell Jackson to ignore Hibernate's proxy-related fields during serialization.
-   
-   3. **Initialize lazy-loaded relationships**: to avoid serialization issues:
-      
-      ```java
-               borrows.forEach(borrow -> {
-                    borrow.getBook().getTitle(); // Force initialization of book
-                    borrow.getUser().getUserAppName(); // Force initialization of user
-                });
-      ```
 
 ## Execution
 
@@ -205,10 +187,10 @@ curl "http://localhost:8080/api/borrows?bookTitle=To%20Kill&returned=false"
 This SQL query performs the following operations:
 
 1. Joins the `borrow` table with both `book` and `user_app` tables
-2. Filters for books whose titles contain "To Kill"
+2. Filters for books whose titles contain<mark> "To Kill"</mark>
 3. Filters for borrows that haven't been returned yet
 
-The query will return all borrow records where the book title contains "To Kill" and the item hasn't been returned yet.
+The **query** will return all `borrow` records where the `book` title contains <mark>"To Kill" </mark> and the item hasn't been returned yet.
 
 ```sql
 SELECT 
@@ -223,6 +205,12 @@ INNER JOIN
 WHERE 
     bk.title LIKE '%To Kill%'
     AND b.returned = false;
+```
+
+```bash
+[Sat Mar 08 10:58:14] albert@albert-VirtualBox:~
+$ curl "http://localhost:8080/api/borrows?bookTitle=To%20Kill&returned=false"
+[]
 ```
 
 **Query#2**
@@ -244,4 +232,515 @@ INNER JOIN
 WHERE 
     bk.title LIKE '%To Kill%'
     AND b.returned = true;
+```
+
+```bash
+[Sat Mar 08 10:58:17] albert@albert-VirtualBox:~
+$ curl "http://localhost:8080/api/borrows?bookTitle=To%20Kill&returned=true"
+[
+    {
+        "id": "BR001",
+        "borrowDate": "2025-02-15",
+        "returnDate": "2025-03-15",
+        "returned": true,
+        "points": 10,
+        "user": {
+            "id": "U001",
+            "userAppName": "John Doe",
+            "email": "john.doe@example.com",
+            "password": "password123",
+            "age": 30,
+            "address": "123 Main St, Anytown, USA",
+            "archived": false,
+            "dob": "1995-05-15"
+        },
+        "book": {
+            "id": "B001",
+            "title": "To Kill a Mockingbird",
+            "author": "Harper Lee",
+            "isbn": "9780446310789",
+            "pagesQty": 281,
+            "available": true,
+            "publicationDate": "1960-07-11"
+        }
+    }
+]
+```
+
+**Query#3**
+
+Filter by user age less than 30 and not archived:
+
+```bash
+[Sat Mar 08 10:58:17] albert@albert-VirtualBox:~
+curl "http://localhost:8080/api/borrows?userAge=30&archived=false"
+[
+    {
+        "id": "BR002",
+        "borrowDate": "2025-02-16",
+        "returnDate": "2025-03-16",
+        "returned": false,
+        "points": 5,
+        "user": {
+            "id": "U002",
+            "userAppName": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "password": "securepass456",
+            "age": 28,
+            "address": "456 Elm St, Somewhere, USA",
+            "archived": false,
+            "dob": "1997-08-22"
+        },
+        "book": {
+            "id": "B002",
+            "title": "1984",
+            "author": "George Orwell",
+            "isbn": "9780451524935",
+            "pagesQty": 328,
+            "available": true,
+            "publicationDate": "1949-06-08"
+        }
+    },
+    {
+        "id": "BR004",
+        "borrowDate": "2025-02-18",
+        "returnDate": "2025-03-18",
+        "returned": false,
+        "points": 8,
+        "user": {
+            "id": "U004",
+            "userAppName": "Emily Brown",
+            "email": "emily.brown@example.com",
+            "password": "emilyb2023",
+            "age": 26,
+            "address": "101 Pine Rd, Elsewhere, USA",
+            "archived": false,
+            "dob": "1999-11-30"
+        },
+        "book": {
+            "id": "B004",
+            "title": "The Great Gatsby",
+            "author": "F. Scott Fitzgerald",
+            "isbn": "9780743273565",
+            "pagesQty": 180,
+            "available": true,
+            "publicationDate": "1925-04-10"
+        }
+    },
+    {
+        "id": "BR008",
+        "borrowDate": "2025-02-22",
+        "returnDate": "2025-03-22",
+        "returned": false,
+        "points": 7,
+        "user": {
+            "id": "U008",
+            "userAppName": "Lisa Taylor",
+            "email": "lisa.taylor@example.com",
+            "password": "taylorpass246",
+            "age": 29,
+            "address": "505 Spruce St, Someplace, USA",
+            "archived": false,
+            "dob": "1996-04-12"
+        },
+        "book": {
+            "id": "B008",
+            "title": "The Lord of the Rings",
+            "author": "J.R.R. Tolkien",
+            "isbn": "9780618640157",
+            "pagesQty": 1178,
+            "available": true,
+            "publicationDate": "1954-07-29"
+        }
+    },
+    {
+        "id": "BR014",
+        "borrowDate": "2025-02-28",
+        "returnDate": "2025-03-28",
+        "returned": false,
+        "points": 8,
+        "user": {
+            "id": "U014",
+            "userAppName": "Michelle Lee",
+            "email": "michelle.lee@example.com",
+            "password": "leepass357",
+            "age": 27,
+            "address": "222 Poplar Rd, Whereplace, USA",
+            "archived": false,
+            "dob": "1998-03-17"
+        },
+        "book": {
+            "id": "B014",
+            "title": "Harry Potter and the Philosopher's Stone",
+            "author": "J.K. Rowling",
+            "isbn": "9780747532743",
+            "pagesQty": 223,
+            "available": true,
+            "publicationDate": "1997-06-26"
+        }
+    },
+    {
+        "id": "BR018",
+        "borrowDate": "2025-03-04",
+        "returnDate": "2025-04-03",
+        "returned": false,
+        "points": 10,
+        "user": {
+            "id": "U018",
+            "userAppName": "Sophia Rodriguez",
+            "email": "sophia.rodriguez@example.com",
+            "password": "rodriguezpass951",
+            "age": 25,
+            "address": "666 Elm Ln, Whoplace, USA",
+            "archived": false,
+            "dob": "2000-09-14"
+        },
+        "book": {
+            "id": "B018",
+            "title": "The Fault in Our Stars",
+            "author": "John Green",
+            "isbn": "9780525478812",
+            "pagesQty": 313,
+            "available": true,
+            "publicationDate": "2012-01-10"
+        }
+    },
+    {
+        "id": "BR025",
+        "borrowDate": "2025-03-11",
+        "returnDate": "2025-04-10",
+        "returned": false,
+        "points": 9,
+        "user": {
+            "id": "U002",
+            "userAppName": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "password": "securepass456",
+            "age": 28,
+            "address": "456 Elm St, Somewhere, USA",
+            "archived": false,
+            "dob": "1997-08-22"
+        },
+        "book": {
+            "id": "B006",
+            "title": "The Catcher in the Rye",
+            "author": "J.D. Salinger",
+            "isbn": "9780316769174",
+            "pagesQty": 234,
+            "available": true,
+            "publicationDate": "1951-07-16"
+        }
+    },
+    {
+        "id": "BR026",
+        "borrowDate": "2025-03-12",
+        "returnDate": "2025-04-11",
+        "returned": true,
+        "points": 11,
+        "user": {
+            "id": "U002",
+            "userAppName": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "password": "securepass456",
+            "age": 28,
+            "address": "456 Elm St, Somewhere, USA",
+            "archived": false,
+            "dob": "1997-08-22"
+        },
+        "book": {
+            "id": "B010",
+            "title": "Brave New World",
+            "author": "Aldous Huxley",
+            "isbn": "9780060850524",
+            "pagesQty": 311,
+            "available": true,
+            "publicationDate": "1932-01-01"
+        }
+    },
+    {
+        "id": "BR027",
+        "borrowDate": "2025-03-13",
+        "returnDate": "2025-04-12",
+        "returned": false,
+        "points": 6,
+        "user": {
+            "id": "U002",
+            "userAppName": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "password": "securepass456",
+            "age": 28,
+            "address": "456 Elm St, Somewhere, USA",
+            "archived": false,
+            "dob": "1997-08-22"
+        },
+        "book": {
+            "id": "B014",
+            "title": "Harry Potter and the Philosopher's Stone",
+            "author": "J.K. Rowling",
+            "isbn": "9780747532743",
+            "pagesQty": 223,
+            "available": true,
+            "publicationDate": "1997-06-26"
+        }
+    },
+    {
+        "id": "BR028",
+        "borrowDate": "2025-03-14",
+        "returnDate": "2025-04-13",
+        "returned": true,
+        "points": 14,
+        "user": {
+            "id": "U002",
+            "userAppName": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "password": "securepass456",
+            "age": 28,
+            "address": "456 Elm St, Somewhere, USA",
+            "archived": false,
+            "dob": "1997-08-22"
+        },
+        "book": {
+            "id": "B018",
+            "title": "The Fault in Our Stars",
+            "author": "John Green",
+            "isbn": "9780525478812",
+            "pagesQty": 313,
+            "available": true,
+            "publicationDate": "2012-01-10"
+        }
+    },
+    {
+        "id": "BR033",
+        "borrowDate": "2025-03-19",
+        "returnDate": "2025-04-18",
+        "returned": false,
+        "points": 7,
+        "user": {
+            "id": "U004",
+            "userAppName": "Emily Brown",
+            "email": "emily.brown@example.com",
+            "password": "emilyb2023",
+            "age": 26,
+            "address": "101 Pine Rd, Elsewhere, USA",
+            "archived": false,
+            "dob": "1999-11-30"
+        },
+        "book": {
+            "id": "B008",
+            "title": "The Lord of the Rings",
+            "author": "J.R.R. Tolkien",
+            "isbn": "9780618640157",
+            "pagesQty": 1178,
+            "available": true,
+            "publicationDate": "1954-07-29"
+        }
+    },
+    {
+        "id": "BR034",
+        "borrowDate": "2025-03-20",
+        "returnDate": "2025-04-19",
+        "returned": true,
+        "points": 12,
+        "user": {
+            "id": "U004",
+            "userAppName": "Emily Brown",
+            "email": "emily.brown@example.com",
+            "password": "emilyb2023",
+            "age": 26,
+            "address": "101 Pine Rd, Elsewhere, USA",
+            "archived": false,
+            "dob": "1999-11-30"
+        },
+        "book": {
+            "id": "B012",
+            "title": "The Little Prince",
+            "author": "Antoine de Saint-Exupéry",
+            "isbn": "9780156012195",
+            "pagesQty": 96,
+            "available": true,
+            "publicationDate": "1943-04-06"
+        }
+    },
+    {
+        "id": "BR035",
+        "borrowDate": "2025-03-21",
+        "returnDate": "2025-04-20",
+        "returned": false,
+        "points": 9,
+        "user": {
+            "id": "U004",
+            "userAppName": "Emily Brown",
+            "email": "emily.brown@example.com",
+            "password": "emilyb2023",
+            "age": 26,
+            "address": "101 Pine Rd, Elsewhere, USA",
+            "archived": false,
+            "dob": "1999-11-30"
+        },
+        "book": {
+            "id": "B016",
+            "title": "The Hunger Games",
+            "author": "Suzanne Collins",
+            "isbn": "9780439023481",
+            "pagesQty": 374,
+            "available": true,
+            "publicationDate": "2008-09-14"
+        }
+    },
+    {
+        "id": "BR036",
+        "borrowDate": "2025-03-22",
+        "returnDate": "2025-04-21",
+        "returned": true,
+        "points": 15,
+        "user": {
+            "id": "U004",
+            "userAppName": "Emily Brown",
+            "email": "emily.brown@example.com",
+            "password": "emilyb2023",
+            "age": 26,
+            "address": "101 Pine Rd, Elsewhere, USA",
+            "archived": false,
+            "dob": "1999-11-30"
+        },
+        "book": {
+            "id": "B020",
+            "title": "The Help",
+            "author": "Kathryn Stockett",
+            "isbn": "9780425232200",
+            "pagesQty": 451,
+            "available": true,
+            "publicationDate": "2009-02-10"
+        }
+    },
+    {
+        "id": "16a0e662-89cc-4c3e-b108-ca1101efa23c",
+        "borrowDate": "2025-03-08",
+        "returnDate": "2025-03-22",
+        "returned": false,
+        "points": 0,
+        "user": {
+            "id": "e6013cd5-200c-4084-8c66-01c6a309f8f7",
+            "userAppName": "John Doe",
+            "email": null,
+            "password": null,
+            "age": 24,
+            "address": null,
+            "archived": false,
+            "dob": "2000-01-01"
+        },
+        "book": {
+            "id": "f7a9d378-b390-436c-80fe-ce569f8c1fa6",
+            "title": "Spring Boot Guide",
+            "author": null,
+            "isbn": "123456789",
+            "pagesQty": 0,
+            "available": true,
+            "publicationDate": null
+        }
+    },
+    {
+        "id": "626f7f77-1451-4d06-aacf-328b723c6040",
+        "borrowDate": "2025-03-08",
+        "returnDate": "2025-03-22",
+        "returned": false,
+        "points": 0,
+        "user": {
+            "id": "3d1455ff-b75a-4379-b8fb-be29c284bc52",
+            "userAppName": "John Doe",
+            "email": null,
+            "password": null,
+            "age": 24,
+            "address": null,
+            "archived": false,
+            "dob": "2000-01-01"
+        },
+        "book": {
+            "id": "0591ea31-0d55-484d-a728-69a4c4a95703",
+            "title": "Spring Boot Guide",
+            "author": null,
+            "isbn": "123456789",
+            "pagesQty": 0,
+            "available": true,
+            "publicationDate": null
+        }
+    }
+]
+```
+
+**Query#4**
+
+Complex filter with multiple parameters, this filter uses query parameters to search for `borrow` records in an API. It looks for:
+
+- books with a title containing "Spring" (`bookTitle=Spring`),
+
+- an ISBN of `123456789` (`isbn=123456789`),
+
+- and availability set to `true` (`available=true`),
+
+- it also filters users by age (`userAge=25`),
+
+- ensures they are not archived (`archived=false`),
+
+- and have a date of birth of `2000-01-01` (`dob=2000-01-01`),
+
+- finally, it only includes borrows that are not yet returned (`returned=false`).
+
+```bash
+[Sat Mar 08 10:58:17] albert@albert-VirtualBox:~
+curl "http://localhost:8080/api/borrows?bookTitle=Spring&isbn=123456789&available=true&userAge=25&archived=false&dob=2000-01-01&returned=false"
+[
+    {
+        "id": "16a0e662-89cc-4c3e-b108-ca1101efa23c",
+        "borrowDate": "2025-03-08",
+        "returnDate": "2025-03-22",
+        "returned": false,
+        "points": 0,
+        "user": {
+            "id": "e6013cd5-200c-4084-8c66-01c6a309f8f7",
+            "userAppName": "John Doe",
+            "email": null,
+            "password": null,
+            "age": 24,
+            "address": null,
+            "archived": false,
+            "dob": "2000-01-01"
+        },
+        "book": {
+            "id": "f7a9d378-b390-436c-80fe-ce569f8c1fa6",
+            "title": "Spring Boot Guide",
+            "author": null,
+            "isbn": "123456789",
+            "pagesQty": 0,
+            "available": true,
+            "publicationDate": null
+        }
+    },
+    {
+        "id": "626f7f77-1451-4d06-aacf-328b723c6040",
+        "borrowDate": "2025-03-08",
+        "returnDate": "2025-03-22",
+        "returned": false,
+        "points": 0,
+        "user": {
+            "id": "3d1455ff-b75a-4379-b8fb-be29c284bc52",
+            "userAppName": "John Doe",
+            "email": null,
+            "password": null,
+            "age": 24,
+            "address": null,
+            "archived": false,
+            "dob": "2000-01-01"
+        },
+        "book": {
+            "id": "0591ea31-0d55-484d-a728-69a4c4a95703",
+            "title": "Spring Boot Guide",
+            "author": null,
+            "isbn": "123456789",
+            "pagesQty": 0,
+            "available": true,
+            "publicationDate": null
+        }
+    }
+]
 ```
