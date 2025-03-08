@@ -24,7 +24,7 @@ public class BorrowController {
     private BorrowRepository borrowRepository;
 
     @GetMapping
-    @Transactional // Add transaction to ensure lazy-loaded entities are initialized
+    //@Transactional // Add transaction to ensure lazy-loaded entities are initialized
     public ResponseEntity<List<Borrow>> filterBorrows(
             @RequestParam(required = false) String bookTitle,
             @RequestParam(required = false) String isbn,
@@ -39,10 +39,10 @@ public class BorrowController {
         ));
 
         // Initialize lazy-loaded relationships to avoid serialization issues
-        borrows.forEach(borrow -> {
+       /* borrows.forEach(borrow -> {
             borrow.getBook().getTitle(); // Force initialization of book
             borrow.getUser().getUserAppName(); // Force initialization of user
-        });
+        });*/
 
         return ResponseEntity.ok(borrows);
     }
